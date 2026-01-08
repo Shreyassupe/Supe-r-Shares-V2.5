@@ -1,5 +1,5 @@
 # 1. Use a basic Python setup
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 # 2. Set the working directory inside the server
 WORKDIR /app
@@ -16,3 +16,4 @@ EXPOSE 8080
 
 # 6. The command to start your app
 CMD ["python", "main.py"]
+
