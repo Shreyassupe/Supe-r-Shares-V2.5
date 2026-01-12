@@ -1,0 +1,32 @@
+[
+    {
+        "ticker": "VOO",
+        "qty": 1.0,
+        "avg_price": 634.0599975585938
+    },
+    {
+        "ticker": "IWM",
+        "qty": 1.0,
+        "avg_price": 258.2699890136719
+    },
+    {
+        "ticker": "DIA",
+        "qty": 1.0,
+        "avg_price": 492.5299987792969
+    },
+    {
+        "ticker": "PFE",
+        "qty": 1.0,
+        "avg_price": 25.290000915527344
+    },
+    {
+        "ticker": "CRM",
+        "qty": 1.0,
+        "avg_price": 260.5299987792969
+    },
+    {
+        "ticker": "NKE",
+        "qty": 1.0,
+        "avg_price": 65.26000213623047
+    }
+]

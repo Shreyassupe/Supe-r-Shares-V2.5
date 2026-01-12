@@ -12,16 +12,21 @@ def frame(page_title: str):
     # 2. The Top Navigation Bar (Darker Slate)
     with ui.header().classes("items-center justify-between bg-slate-950 text-white border-b border-slate-800"):
         
-        # --- NEW: Clickable Logo (Redirects to Home) ---
+        # --- Clickable Logo (Redirects to Home) ---
         with ui.link(target="/").classes("flex items-center gap-2 no-underline text-white hover:text-green-400 transition-colors cursor-pointer"):
             ui.icon("show_chart").classes("text-2xl text-green-400")
             ui.label("SuperShares").classes("text-xl font-bold tracking-tight")
 
+        # --- Navigation Links ---
         with ui.row().classes("gap-6"):
-            # Lighter hover effects
-            ui.link("Home", "/").classes("text-slate-300 no-underline hover:text-white font-medium")
-            ui.link("Detail", "/detail/SPY").classes("text-slate-300 no-underline hover:text-white font-medium")
-            ui.link("Favorites", "/favorites").classes("text-slate-300 no-underline hover:text-white font-medium")
+            # Helper for consistent link styling
+            def nav_link(text, target):
+                ui.link(text, target).classes("text-slate-300 no-underline hover:text-white font-medium")
+            
+            nav_link("Home", "/")
+            nav_link("Portfolio", "/portfolio")  # <--- NEW LINK ADDED HERE
+            nav_link("Favorites", "/favorites")
+            nav_link("Detail", "/detail/SPY")
 
     # 3. Yield control back to the page
     yield

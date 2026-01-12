@@ -8,13 +8,13 @@ from universe import COMPANIES
 import contextlib
 import io
 
-# -----------------------------
-# 1. Data Core (Silenced & Deep)
-# -----------------------------
+# ============================================================
+# 1. DATA FETCHING
+# ============================================================
+
 @lru_cache(maxsize=128)
 def fetch_yf(ticker: str, start: dt.date, end: dt.date) -> pd.DataFrame:
     try:
-        # Silencer for "Failed download" spam
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             df = yf.download(
                 ticker, 
@@ -25,8 +25,7 @@ def fetch_yf(ticker: str, start: dt.date, end: dt.date) -> pd.DataFrame:
                 threads=True
             )
         
-        if df.empty: 
-            return pd.DataFrame()
+        if df.empty: return pd.DataFrame()
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = [str(c[0]) for c in df.columns]
@@ -54,19 +53,15 @@ def fetch_fundamentals(ticker: str) -> dict:
     try:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return yf.Ticker(ticker).info
-    except:
-        return {}
+    except: return {}
 
 @lru_cache(maxsize=64)
 def fetch_financials(ticker: str) -> pd.DataFrame:
     try:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             fin = yf.Ticker(ticker).financials
-            if fin.empty: 
-                return pd.DataFrame()
-            return fin.T.sort_index()
-    except:
-        return pd.DataFrame()
+            return fin.T.sort_index() if not fin.empty else pd.DataFrame()
+    except: return pd.DataFrame()
 
 @lru_cache(maxsize=64)
 def fetch_holders(ticker: str) -> tuple:
@@ -74,8 +69,11 @@ def fetch_holders(ticker: str) -> tuple:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             t = yf.Ticker(ticker)
             return t.major_holders, t.institutional_holders
-    except:
-        return None, None
+    except: return None, None
+
+# ============================================================
+# 2. TECHNICAL INDICATORS
+# ============================================================
 
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
@@ -90,18 +88,15 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     d["rsi14"] = 100 - (100 / (1 + rs))
     
     pc = d["close"].shift(1)
-    tr = pd.concat([
-        (d["high"]-d["low"]).abs(), 
-        (d["high"]-pc).abs(), 
-        (d["low"]-pc).abs()
-    ], axis=1).max(axis=1)
+    tr = pd.concat([(d["high"]-d["low"]).abs(), (d["high"]-pc).abs(), (d["low"]-pc).abs()], axis=1).max(axis=1)
     d["atr14"] = tr.ewm(alpha=1/14, adjust=False).mean()
     d["atr_pct"] = (d["atr14"] / d["close"]) * 100
     return d
 
-# -----------------------------
-# 2. Candle Patterns (ADVANCED & EXPANDED)
-# -----------------------------
+# ============================================================
+# 3. CANDLE PATTERNS
+# ============================================================
+
 CANDLE_LEARN = {
     "Doji": "Indecision: open ≈ close.",
     "Hammer": "Possible bullish reversal found at bottoms.",
@@ -114,19 +109,13 @@ CANDLE_LEARN = {
 }
 
 def detect_patterns(df: pd.DataFrame, n_days: int = 5):
-    if len(df) < 5: 
-        return []
-    
-    # Analyze the last n_days + buffer
+    if len(df) < 5: return []
     tail = df.tail(n_days + 2).reset_index(drop=True)
     patterns = []
     
-    # Iterate (skip index 0 as we need previous day)
     for i in range(1, len(tail)):
         curr = tail.iloc[i]
         prev = tail.iloc[i-1]
-        
-        # Stats
         O, H, L, C = curr["open"], curr["high"], curr["low"], curr["close"]
         body = abs(C - O)
         rng = max(0.0001, H - L)
@@ -139,40 +128,27 @@ def detect_patterns(df: pd.DataFrame, n_days: int = 5):
         currBodyColor = "green" if C > O else "red"
         
         pat = None
-        
-        # 1. Doji
-        if body <= 0.15 * rng:
-            pat = "Doji"
-        # 2. Hammer
-        elif (lower_wick >= 2 * body) and (upper_wick <= 0.3 * body):
-            pat = "Hammer"
-        # 3. Inverted Hammer / Shooting Star
-        elif (upper_wick >= 2 * body) and (lower_wick <= 0.3 * body):
-            pat = "Inverted Hammer" if prev["close"] < prev["open"] else "Shooting Star"
-        # 4. Engulfing
-        elif (body > pBody) and (C > pO and O < pC) and (currBodyColor == "green" and pBodyColor == "red"):
-            pat = "Bullish Engulfing"
-        elif (body > pBody) and (C < pO and O > pC) and (currBodyColor == "red" and pBodyColor == "green"):
-            pat = "Bearish Engulfing"
-        # 5. Harami
-        elif (body < pBody * 0.7) and (O > pC and C < pO) and (currBodyColor == "red" and pBodyColor == "green"):
-            pat = "Bearish Harami"
-        elif (body < pBody * 0.7) and (O < pC and C > pO) and (currBodyColor == "green" and pBodyColor == "red"):
-            pat = "Bullish Harami"
+        if body <= 0.15 * rng: pat = "Doji"
+        elif (lower_wick >= 2 * body) and (upper_wick <= 0.3 * body): pat = "Hammer"
+        elif (upper_wick >= 2 * body) and (lower_wick <= 0.3 * body): pat = "Inverted Hammer" if prev["close"] < prev["open"] else "Shooting Star"
+        elif (body > pBody) and (C > pO and O < pC) and (currBodyColor == "green" and pBodyColor == "red"): pat = "Bullish Engulfing"
+        elif (body > pBody) and (C < pO and O > pC) and (currBodyColor == "red" and pBodyColor == "green"): pat = "Bearish Engulfing"
+        elif (body < pBody * 0.7) and (O > pC and C < pO) and (currBodyColor == "red" and pBodyColor == "green"): pat = "Bearish Harami"
+        elif (body < pBody * 0.7) and (O < pC and C > pO) and (currBodyColor == "green" and pBodyColor == "red"): pat = "Bullish Harami"
 
         if pat:
             patterns.append({
-                "Date": curr["date"], 
-                "Pattern": pat, 
+                "Date": curr["date"], "Pattern": pat, 
                 "Meaning": CANDLE_LEARN.get(pat, ""), 
                 "Learn": "https://www.investopedia.com/search?q=" + pat.replace(" ", "+")
             })
             
     return sorted(patterns, key=lambda x: x["Date"], reverse=True)[:n_days]
 
-# -----------------------------
-# 3. Text Analysis
-# -----------------------------
+# ============================================================
+# 4. TEXT ANALYSIS
+# ============================================================
+
 def explain_takeaways(df: pd.DataFrame):
     last = df.iloc[-1]
     ma20, ma50, ma200 = last.get("ma20"), last.get("ma50"), last.get("ma200")
@@ -186,20 +162,11 @@ def explain_takeaways(df: pd.DataFrame):
 def get_pros_cons(df: pd.DataFrame) -> dict:
     last = df.iloc[-1]
     pros, cons = [], []
-    
-    if last["close"] > last["ma200"]:
-        pros.append("Trading above 200-day MA (Bullish).")
-    else:
-        cons.append("Trading below 200-day MA (Bearish).")
-        
-    if last["rsi14"] < 35:
-        pros.append("RSI is Oversold (Potential bounce).")
-    elif last["rsi14"] > 65:
-        cons.append("RSI is Overbought (Caution).")
-        
-    if last["atr_pct"] < 1.5:
-        pros.append("Volatility is Low (Stable).")
-        
+    if last["close"] > last["ma200"]: pros.append("Trading above 200-day MA (Bullish).")
+    else: cons.append("Trading below 200-day MA (Bearish).")
+    if last["rsi14"] < 35: pros.append("RSI is Oversold (Potential bounce).")
+    elif last["rsi14"] > 65: cons.append("RSI is Overbought (Caution).")
+    if last["atr_pct"] < 1.5: pros.append("Volatility is Low (Stable).")
     return {"Pros": pros, "Cons": cons}
 
 def get_peers(ticker: str) -> list:
@@ -207,10 +174,11 @@ def get_peers(ticker: str) -> list:
     if not me: return []
     return [c for c in COMPANIES if c.get("sector") == me.get("sector") and c["ticker"] != ticker][:5]
 
-# -----------------------------
-# 4. Decision Engine
-# -----------------------------
-def get_decision(df: pd.DataFrame, profile: str = "TRADER") -> dict:
+# ============================================================
+# 5. DECISION ENGINE
+# ============================================================
+
+def get_decision(df: pd.DataFrame, profile: str = "TRADER", owned: bool = False) -> dict:
     p = (profile or "TRADER").upper()
     if p == "SWING":
         par = {"stop_atr": 2.5, "target_r": 2.5, "rsi_min": 35}
@@ -237,33 +205,31 @@ def get_decision(df: pd.DataFrame, profile: str = "TRADER") -> dict:
         decision, entry = "BUY", "Pullback to MA"
     elif fw == "AVOID":
         decision = "AVOID"
-        
+    
+    # --- V2.0 FEATURE: OWNERSHIP LOGIC ---
+    # If we own the stock, and the framework says AVOID (Downtrend), warn the user to SELL.
+    if owned and fw == "AVOID":
+        decision = "SELL WARNING"
+
     stop = close - (par["stop_atr"] * atr) if decision == "BUY" else np.nan
     target = close + (par["target_r"] * (close - stop)) if decision == "BUY" else np.nan
     
     base_score = 45 if fw == "INVEST" else 25
-    if decision == "BUY": 
-        base_score += 10
+    if decision == "BUY": base_score += 10
+    if decision == "SELL WARNING": base_score = 10 # Penalize score heavily for sell warnings
     
     return {
-        "Decision": decision, 
-        "Conf": "High" if decision=="BUY" else "Medium", 
-        "Entry": entry, 
-        "Stop": stop, 
-        "Target": target, 
-        "Framework": fw, 
-        "Score": base_score, 
-        "Short": short, 
-        "Medium": med, 
-        "Long": lng, 
-        "Volatility": vol, 
-        "ATR": atr, 
-        "RSI": rsi
+        "Decision": decision, "Conf": "High" if decision in ["BUY", "SELL WARNING"] else "Medium", 
+        "Entry": entry, "Stop": stop, "Target": target, 
+        "Framework": fw, "Score": base_score, 
+        "Short": short, "Medium": med, "Long": lng, 
+        "Volatility": vol, "ATR": atr, "RSI": rsi
     }
 
-# -----------------------------
-# 5. Main Loop
-# -----------------------------
+# ============================================================
+# 6. SCORING LOOPS (UNIVERSE & PORTFOLIO)
+# ============================================================
+
 def score_universe_data(companies: list, lookback_days: int = 120, profile: str = "TRADER") -> pd.DataFrame:
     end = dt.date.today()
     start = end - dt.timedelta(days=lookback_days + 260)
@@ -271,56 +237,83 @@ def score_universe_data(companies: list, lookback_days: int = 120, profile: str 
     
     for c in companies:
         df = fetch_yf(c["ticker"], start, end)
-        if len(df) < 60: 
-            continue
-            
+        if len(df) < 60: continue
         df = add_indicators(df)
-        sig = get_decision(df, profile)
-        
-        last = df.iloc[-1]
-        prev = df.iloc[-2]
+        sig = get_decision(df, profile, owned=False)
+        last, prev = df.iloc[-1], df.iloc[-2]
         chg = last["close"] - prev["close"]
         chg_pct = (chg / prev["close"]) * 100
         dist_ma20 = ((last["close"] - last["ma20"]) / last["ma20"]) * 100
         
         rows.append({
-            "Ticker": c["ticker"],
-            "Company": c["name"],
-            "Sector": c.get("sector", "Other"),
-            "Decision": sig["Decision"],
-            "Conf": sig["Conf"],
-            "Entry": sig["Entry"],
-            "Stop": sig["Stop"],
-            "Target": sig["Target"],
-            "Framework": sig["Framework"],
-            "Score": sig["Score"],
-            "Short": sig["Short"],
-            "Medium": sig["Medium"],
-            "Long": sig["Long"],
-            "Volatility": sig["Volatility"],
-            "Last Close": last["close"],
-            "Change": chg,
-            "Change%": chg_pct,
-            "Volume": last["volume"],
-            "ATR": sig["ATR"],
-            "RSI": sig["RSI"],
-            "DistMA20": dist_ma20
+            "Ticker": c["ticker"], "Company": c["name"], "Sector": c.get("sector", "Other"),
+            "Decision": sig["Decision"], "Conf": sig["Conf"], "Entry": sig["Entry"],
+            "Stop": sig["Stop"], "Target": sig["Target"], "Framework": sig["Framework"],
+            "Score": sig["Score"], "Short": sig["Short"], "Medium": sig["Medium"], "Long": sig["Long"],
+            "Volatility": sig["Volatility"], "Last Close": last["close"], 
+            "Change": chg, "Change%": chg_pct, "Volume": last["volume"],
+            "ATR": sig["ATR"], "RSI": sig["RSI"], "DistMA20": dist_ma20
         })
     return pd.DataFrame(rows)
 
-# -----------------------------
-# 6. Favorites
-# -----------------------------
-def get_favorites(): 
-    return app.storage.user.get("favorites", [])
+def score_portfolio(portfolio_items: list, profile: str = "TRADER") -> pd.DataFrame:
+    """
+    V2.0 New Function: Scores only the items in the portfolio and adds P&L math.
+    """
+    end = dt.date.today()
+    start = end - dt.timedelta(days=365) # 1 year lookback for owners
+    rows = []
+    
+    for item in portfolio_items:
+        ticker = item["ticker"]
+        qty = float(item["qty"])
+        avg_price = float(item["avg_price"])
+        
+        # Find company name if possible
+        comp = next((c for c in COMPANIES if c["ticker"] == ticker), {"name": ticker})
+        
+        df = fetch_yf(ticker, start, end)
+        if len(df) < 60: continue
+        df = add_indicators(df)
+        
+        # PASS owned=True to trigger SELL WARNING logic
+        sig = get_decision(df, profile, owned=True)
+        
+        last = df.iloc[-1]
+        current_price = float(last["close"])
+        
+        # --- WALLET MATH ---
+        invested_amt = qty * avg_price
+        current_val = qty * current_price
+        pl = current_val - invested_amt
+        pl_pct = (pl / invested_amt * 100) if invested_amt > 0 else 0
+        
+        rows.append({
+            "Ticker": ticker,
+            "Company": comp["name"],
+            "Qty": qty,
+            "AvgPrice": avg_price,
+            "CurrentPrice": current_price,
+            "Invested": invested_amt,
+            "CurrentVal": current_val,
+            "P&L": pl,
+            "P&L%": pl_pct,
+            "Decision": sig["Decision"], # This will now show "SELL WARNING" if needed
+            "Score": sig["Score"],
+            "Framework": sig["Framework"]
+        })
+        
+    return pd.DataFrame(rows)
+
+# ============================================================
+# 7. FAVORITES UTILS
+# ============================================================
+def get_favorites(): return app.storage.user.get("favorites", [])
 
 def toggle_favorite(ticker: str):
-    favs = get_favorites()
-    if ticker in favs: 
-        favs.remove(ticker)
-    else: 
-        favs.append(ticker)
+    favs = list(app.storage.user.get("favorites", []))
+    if ticker in favs: favs.remove(ticker)
+    else: favs.append(ticker)
     app.storage.user["favorites"] = favs
 
-def is_favorite(ticker: str) -> bool: 
-    return ticker in get_favorites()
+def is_favorite(ticker: str) -> bool: return ticker in get_favorites()

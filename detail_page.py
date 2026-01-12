@@ -4,6 +4,7 @@ from logic import (fetch_yf, add_indicators, get_decision, detect_patterns,
                    toggle_favorite, fetch_fundamentals, fetch_financials, fetch_holders)
 from universe import COMPANIES
 from theme import frame
+from portfolio_manager import add_transaction # <--- Import this
 import plotly.graph_objects as go
 import datetime as dt
 import numpy as np
@@ -17,9 +18,27 @@ def render_detail(ticker: str):
     cur = "₹" if market == "INDIA" else "$"
 
     with frame(f"Detail - {ticker}"):
+        
+        # --- 1. POPUP DIALOG FOR PORTFOLIO ---
+        def open_buy_dialog(current_price):
+            with ui.dialog() as dialog, ui.card().classes("bg-slate-900 border border-slate-700 w-96"):
+                ui.label(f"Add {ticker} to Portfolio").classes("text-xl font-bold text-white mb-4")
+                
+                qty_input = ui.number(label="Shares Bought", value=1, min=0.01).classes("w-full mb-2")
+                price_input = ui.number(label="Avg Price", value=current_price, format="%.2f").classes("w-full mb-6")
+                
+                def save():
+                    add_transaction(ticker, qty_input.value, price_input.value)
+                    dialog.close()
+                    
+                with ui.row().classes("w-full justify-end"):
+                    ui.button("Cancel", on_click=dialog.close).props("flat color=grey")
+                    ui.button("Add to Portfolio", on_click=save).props("color=green")
+            dialog.open()
+        
+        # --- 2. Main UI ---
         with ui.column().classes("w-full max-w-7xl mx-auto p-4 gap-4"):
             
-            # --- 1. Fetch Data ---
             end = dt.date.today()
             start = end - dt.timedelta(days=400)
             df = fetch_yf(ticker, start, end)
@@ -42,7 +61,7 @@ def render_detail(ticker: str):
             takeaways = explain_takeaways(df)
             pro_con = get_pros_cons(df)
             
-            # --- Formatters ---
+            # --- Formatters (Same as before) ---
             def fmt_num_safe(key, prefix="", suffix=""):
                 val = info.get(key)
                 if val is None or not isinstance(val, (int, float)): return "—"
@@ -63,25 +82,30 @@ def render_detail(ticker: str):
                 if val is None or not isinstance(val, (int, float)): return "—"
                 return f"{val:.2f}"
 
-            # --- 2. Header ---
+            # --- 3. Header Buttons ---
             with ui.row().classes("w-full justify-between items-end mb-2"):
                 with ui.column().classes("gap-0"):
                     ui.label(full_name).classes("text-3xl md:text-4xl font-black text-white leading-tight")
                     ui.label(f"{ticker} • {sector} • {market} ({quote_type})").classes("text-sm text-slate-400 font-bold")
                 
-                def toggle_fav_btn():
-                    toggle_favorite(ticker)
-                    update_btn()
-                    
-                def update_btn():
-                    is_fav = is_favorite(ticker)
-                    fav_btn.props(f"icon={'star' if is_fav else 'star_border'} color={'amber' if is_fav else 'grey'}")
-                    fav_btn.text = "Saved" if is_fav else "Add to Favorites"
-                    
-                fav_btn = ui.button("Add to Favorites", on_click=toggle_fav_btn).props("outline dense")
-                update_btn()
+                with ui.row().classes("gap-2"):
+                    # FAVORITE BUTTON
+                    def toggle_fav_btn():
+                        toggle_favorite(ticker)
+                        update_fav_btn()
+                        
+                    def update_fav_btn():
+                        is_fav = is_favorite(ticker)
+                        fav_btn.props(f"icon={'star' if is_fav else 'star_border'} color={'amber' if is_fav else 'grey'}")
+                        fav_btn.text = "Saved" if is_fav else "Favorite"
+                        
+                    fav_btn = ui.button("Favorite", on_click=toggle_fav_btn).props("outline dense")
+                    update_fav_btn()
 
-            # --- 3. Price Cards ---
+                    # PORTFOLIO BUTTON (NEW)
+                    ui.button("Add to Portfolio", icon="business_center", on_click=lambda: open_buy_dialog(last["close"])).props("dense color=blue-600")
+
+            # --- 4. Price Cards ---
             chg = last["close"] - prev["close"]
             chg_pct = (chg / prev["close"]) * 100
             chg_color = "text-green-400" if chg > 0 else "text-red-400"
@@ -99,7 +123,7 @@ def render_detail(ticker: str):
                 metric_card("Day High", f"{cur}{last['high']:.2f}", color="text-slate-300")
                 metric_card("Day Low", f"{cur}{last['low']:.2f}", color="text-slate-300")
 
-            # --- 4. Signal (Universal Gradients) ---
+            # --- 5. Signal (Universal Gradients) ---
             with ui.grid().classes("w-full grid-cols-1 md:grid-cols-2 gap-4"):
                 decision = sig['Decision']
                 
@@ -134,7 +158,7 @@ def render_detail(ticker: str):
                     - **Vol:** {sig['Volatility']}
                     """).classes("text-sm leading-tight")
 
-            # --- 5. Fundamentals ---
+            # --- 6. Fundamentals ---
             ui.label(f"Fundamentals ({'ETF Protocol' if is_etf else 'Finviz Protocol'})").classes("text-lg font-bold text-white mt-2")
             with ui.card().classes("w-full bg-slate-900 border border-slate-700 p-0"):
                 with ui.grid().classes("grid-cols-2 sm:grid-cols-3 md:grid-cols-6 w-full gap-px bg-slate-700"):
@@ -188,7 +212,7 @@ def render_detail(ticker: str):
                         f_item("Avg Vol", fmt_num_safe("averageVolume", suffix=""))
                         f_item("Short Ratio", fmt_ratio_safe("shortRatio"))
 
-            # --- 6. Charts (Smart Hide) ---
+            # --- 7. Charts ---
             has_financials = not is_etf and not financials.empty
             has_ownership = False
             insider_pct, inst_pct, public_pct = 0.0, 0.0, 100.0
@@ -225,7 +249,7 @@ def render_detail(ticker: str):
                             h_fig.update_layout(template="plotly_dark", height=280, showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", margin=dict(l=20, r=20, t=20, b=20), annotations=[dict(text='Holders', x=0.5, y=0.5, font_size=14, showarrow=False, font_color="white")])
                             ui.plotly(h_fig).classes("w-full h-[280px]")
 
-            # --- 7. Analyst Gauge (Sanitized) ---
+            # --- 8. Analyst Gauge ---
             if not is_etf:
                 with ui.card().classes("w-full bg-slate-900 border border-slate-700 p-4"):
                     ui.label("Analyst Price Target").classes("text-sm font-bold text-slate-300 uppercase mb-4")
@@ -239,7 +263,6 @@ def render_detail(ticker: str):
                             ui.label(f"{upside:+.2f}% Upside").classes(f"text-lg font-bold {up_color}")
                         low, high = info.get("targetLowPrice", current*0.8), info.get("targetHighPrice", current*1.2)
                         
-                        # Fix: sanitize=False
                         ui.html(f'''
                             <div style="width:100%; height:10px; background:#334155; border-radius:5px; position:relative; margin-top:10px;">
                                 <div style="position:absolute; left:0; top:0; height:100%; width:100%; background: linear-gradient(90deg, #ef4444 0%, #eab308 50%, #22c55e 100%); opacity:0.3; border-radius:5px;"></div>
@@ -252,7 +275,7 @@ def render_detail(ticker: str):
                     else:
                         ui.label("No Analyst Data").classes("text-slate-500 italic")
 
-            # --- 8. Technicals ---
+            # --- 9. Technicals ---
             ui.label("Technical Strength").classes("text-lg font-bold text-white mt-4")
             with ui.grid().classes("w-full grid-cols-1 md:grid-cols-2 gap-4"):
                 with ui.card().classes("bg-slate-900 border border-green-900/50 p-3"):
@@ -277,7 +300,7 @@ def render_detail(ticker: str):
             fig.update_layout(template="plotly_dark", height=500, margin=dict(l=40,r=40,t=30,b=30), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", xaxis_rangeslider_visible=False)
             ui.plotly(fig).classes("w-full h-[500px] bg-slate-900 rounded-xl border border-slate-700")
 
-            # --- Peers & Candle Patterns (Fixed) ---
+            # --- 10. Peers & Patterns ---
             with ui.grid().classes("w-full grid-cols-1 md:grid-cols-2 gap-4 mt-4"):
                 with ui.column().classes("gap-2"):
                     ui.label(f"Peer Comparison ({sector})").classes("text-lg font-bold text-white")
@@ -309,7 +332,6 @@ def render_detail(ticker: str):
                     else:
                         ui.label("No peers found.").classes("text-slate-500 italic")
 
-                # Candle Patterns (Restored)
                 with ui.column().classes("gap-2"):
                     ui.label("Candle Patterns (Last 5 Days)").classes("text-lg font-bold text-white")
                     patterns = detect_patterns(df, n_days=5)

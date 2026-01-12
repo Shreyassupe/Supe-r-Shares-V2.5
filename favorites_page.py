@@ -74,14 +74,25 @@ def render_favorites():
                     table = ui.table(columns=cols, rows=tdf.to_dict("records")).classes('w-full border-slate-700')
                     table.props("dark flat dense row-key='Ticker'")
                     
-                    def handle_remove_fav(e):
-                        toggle_favorite(e.args['Ticker'])
-                        update() # Reload to remove the row from view
-                        ui.notify(f"Removed {e.args['Ticker']}", color="red")
+                    # Robust Extractor
+                    def _extract_ticker(e):
+                        arg = e.args
+                        if isinstance(arg, str): return arg
+                        if isinstance(arg, list) and len(arg) > 0: return str(arg[0])
+                        if isinstance(arg, dict): return str(arg.get("Ticker"))
+                        return None
 
+                    def handle_remove_fav(e):
+                        ticker = _extract_ticker(e)
+                        if ticker:
+                            toggle_favorite(ticker)
+                            update() 
+                            ui.notify(f"Removed {ticker}", color="red")
+
+                    # Use safe emitter
                     table.add_slot('body-cell-Fav', r'''
                         <q-td :props="props">
-                            <q-btn flat dense round icon="star" color="amber" @click.stop="$parent.$emit('remove_fav', props.row)" />
+                            <q-btn flat dense round icon="star" color="amber" @click.stop="(typeof emit === 'function' ? emit : $parent.$emit)('remove_fav', props.row.Ticker)" />
                         </q-td>
                     ''')
                     table.on('remove_fav', handle_remove_fav)

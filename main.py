@@ -25,10 +25,15 @@ ui.add_head_html(r'''
 from home_page import render_home
 from detail_page import render_detail
 from favorites_page import render_favorites
+from portfolio_page import render_portfolio  # <--- IMPORT THIS
 
 @ui.page("/")
 def index_page():
     render_home()
+
+@ui.page("/portfolio") # <--- REGISTER THIS ROUTE
+def portfolio_page_route():
+    render_portfolio()
 
 @ui.page("/detail/{ticker}")
 def detail_page_route(ticker: str):
@@ -42,13 +47,12 @@ def favorites_page_route():
 # Execution
 # -------------------------------------------------------------------
 if __name__ in {"__main__", "__mp_main__"}:
-    # CRITICAL: Cloud Setup
     ui.run(
         title="SuperShares",
-        host="0.0.0.0",          # Allows Cloud (and Local) access
-        port=8080,               # Standard Cloud Port
+        host="0.0.0.0",
+        port=8080,
         storage_secret="SUPERSHARES_SECRET_KEY_777",
         favicon="🚀",
         dark=True,
-        reload=False             # Set to False for Cloud/Production stability
+        reload=False
     )
