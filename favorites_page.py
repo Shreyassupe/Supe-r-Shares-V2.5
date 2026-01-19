@@ -6,9 +6,11 @@ import pandas as pd
 
 def render_favorites():
     with frame("Favorites"):
-        with ui.column().classes("w-full max-w-full mx-auto p-4 gap-6"):
+        # --- GAP FIX: Changed p-4 to px-4 pb-4 pt-0 to remove top black bar ---
+        with ui.column().classes("w-full max-w-full mx-auto px-4 pb-4 pt-0 gap-6"):
             
-            ui.label("My Favorites").classes("text-3xl font-black text-white")
+            # Header with top margin to space it nicely from the flush top
+            ui.label("My Favorites").classes("text-3xl font-black text-white mt-6")
             
             content = ui.column().classes("w-full gap-6")
 
@@ -47,6 +49,7 @@ def render_favorites():
                     tdf['Target'] = tdf['Target'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "—")
                     tdf['Entry'] = tdf['Entry'].replace("", "—")
                     
+                    # Sort logic (Keeps 'BUY' at top, but colors handle the rest)
                     def sort_prefix(val, best="INVEST", mid="WAIT"):
                         return f"1~{val}" if val == best else (f"2~{val}" if val == mid else f"3~{val}")
                     tdf['Decision_Sort'] = tdf['Decision'].apply(lambda x: sort_prefix(x, "BUY", "WAIT"))
@@ -74,7 +77,6 @@ def render_favorites():
                     table = ui.table(columns=cols, rows=tdf.to_dict("records")).classes('w-full border-slate-700')
                     table.props("dark flat dense row-key='Ticker'")
                     
-                    # Robust Extractor
                     def _extract_ticker(e):
                         arg = e.args
                         if isinstance(arg, str): return arg
@@ -89,7 +91,6 @@ def render_favorites():
                             update() 
                             ui.notify(f"Removed {ticker}", color="red")
 
-                    # Use safe emitter
                     table.add_slot('body-cell-Fav', r'''
                         <q-td :props="props">
                             <q-btn flat dense round icon="star" color="amber" @click.stop="(typeof emit === 'function' ? emit : $parent.$emit)('remove_fav', props.row.Ticker)" />
@@ -98,7 +99,18 @@ def render_favorites():
                     table.on('remove_fav', handle_remove_fav)
 
                     table.add_slot('body-cell-Ticker', r'''<q-td :props="props"><a :href="'/detail/'+props.value" class="text-blue-400 font-bold no-underline">{{props.value}}</a></q-td>''')
-                    table.add_slot('body-cell-Decision', r'''<q-td :props="props"><q-badge :color="props.value.includes('BUY')?'green':(props.value.includes('AVOID')?'red':'orange')" text-color="white" class="font-bold">{{ props.value.split('~')[1] }}</q-badge></q-td>''')
+                    
+                    # --- UPDATED COLOR LOGIC ---
+                    table.add_slot('body-cell-Decision', r'''
+                        <q-td :props="props">
+                            <q-badge :color="props.value.includes('SWING') ? 'cyan' : (props.value.includes('WATCH') ? 'blue' : (props.value.includes('WAIT') ? 'orange' : (props.value.includes('BUY') || props.value.includes('INVEST') ? 'green' : 'red')))" 
+                                     :class="props.value.includes('SWING') ? 'text-black' : 'text-white'"
+                                     class="font-bold">
+                                {{ props.value.split('~')[1] }}
+                            </q-badge>
+                        </q-td>
+                    ''')
+                    
                     table.add_slot('body-cell-Framework', r'''<q-td :props="props"><q-badge :color="props.value.includes('INVEST')?'green':(props.value.includes('AVOID')?'red':'orange')" text-color="white">{{ props.value.split('~')[1] }}</q-badge></q-td>''')
                     table.add_slot('body-cell-Change%', r'''<q-td :props="props" :class="props.value.startsWith('+')?'text-green-400 font-mono':(props.value.startsWith('-')?'text-red-400 font-mono':'text-slate-400 font-mono')">{{props.value}}</q-td>''')
                     table.add_slot('body-cell-Change_Str', r'''<q-td :props="props" :class="props.value.includes('▲')?'text-green-400 font-mono':(props.value.includes('▼')?'text-red-400 font-mono':'text-slate-400 font-mono')">{{props.value}}</q-td>''')

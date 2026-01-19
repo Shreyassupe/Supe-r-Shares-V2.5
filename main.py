@@ -25,13 +25,13 @@ ui.add_head_html(r'''
 from home_page import render_home
 from detail_page import render_detail
 from favorites_page import render_favorites
-from portfolio_page import render_portfolio  # <--- IMPORT THIS
+from portfolio_page import render_portfolio
 
 @ui.page("/")
 def index_page():
     render_home()
 
-@ui.page("/portfolio") # <--- REGISTER THIS ROUTE
+@ui.page("/portfolio")
 def portfolio_page_route():
     render_portfolio()
 
