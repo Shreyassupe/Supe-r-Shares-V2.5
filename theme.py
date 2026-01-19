@@ -71,7 +71,7 @@ def frame(title):
             with ui.row().classes('items-center gap-4'):
                 with ui.row().classes('items-center gap-2 cursor-pointer').on('click', lambda: ui.navigate.to('/')):
                     ui.icon('show_chart', color='green-400').classes('text-2xl')
-                    ui.label('SuperShares').classes('text-xl font-black text-white tracking-tight')
+                    ui.label('Supe(r)Shares').classes('text-xl font-black text-white tracking-tight')
                 
                 ui.separator().props('vertical').classes('h-6 bg-slate-700')
 
